@@ -8,7 +8,6 @@
 #include "stdio.h"
 #include "stdlib.h"
 
-#include "task.h"
 #include "Kernel.h"
 
 static void Hw_init (void) ;
@@ -24,7 +23,6 @@ static void Timer_test (void) ;
 void main (void)
 {
 	Hw_init() ;
-	Kernel_init() ;
 
 	uint32_t i = 100 ;
 	while (i--)
@@ -36,7 +34,9 @@ void main (void)
 	putstr("Hello World!\n") ;
 
 	Printf_test() ;
-	Timer_test() ;
+//	Timer_test() ;
+
+	Kernel_init() ;
 
 	while (true) ;
 
@@ -92,6 +92,7 @@ static void Kernel_init (void)
 	uint32_t taskId ;
 
 	Kernel_task_init() ;
+	Kernel_event_flag_init() ;
 	
 	taskId = Kernel_task_create(User_task0) ;
 	if (NOT_ENOUGH_TASK_NUM == taskId)
@@ -105,23 +106,36 @@ static void Kernel_init (void)
 		putstr("Task1 creation fail\n") ;
 	}
 
+/*
 	taskId = Kernel_task_create(User_task2) ;
 	if (NOT_ENOUGH_TASK_NUM == taskId)
 	{
 		putstr("Task2 creation fail\n") ;
 	}
+*/
 
 	Kernel_start() ;
 }
-
 
 void User_task0 (void)
 {
 	uint32_t local = 0 ;
 
+	debug_printf("User Task #0 SP=0x%x\n", &local) ;
+	
 	while (true)
 	{
-		debug_printf("User Task #0 SP=0x%x\n", &local) ;
+		KernelEventFlag_t handle_event = Kernel_wait_events(KernelEventFlag_UartIn|KernelEventFlag_CmdOut) ;
+		switch (handle_event)
+		{
+			case KernelEventFlag_UartIn :
+				debug_printf("\nEvent handled by Task0\n") ;
+	//			Kernel_send_events(KernelEventFlag_CmdIn) ;
+				break ;
+			case KernelEventFlag_CmdOut :
+				debug_printf("\nCmdOut Event by Task0\n") ;
+				break ;
+		}
 		Kernel_yield() ;
 	}
 }
@@ -130,9 +144,16 @@ void User_task1 (void)
 {
 	uint32_t local = 0 ;
 
+	debug_printf("User Task #1 SP=0x%x\n", &local) ;
 	while (true)
 	{
-		debug_printf("User Task #1 SP=0x%x\n", &local) ;
+		KernelEventFlag_t handle_event = Kernel_wait_events(KernelEventFlag_CmdIn) ;
+		switch (handle_event)
+		{
+			case KernelEventFlag_CmdIn:
+				debug_printf("\nEvent handled by Task1\n") ;
+				break ;
+		}
 		Kernel_yield() ;
 	}
 }
