@@ -10,6 +10,8 @@
 
 #include "Kernel.h"
 
+static uint32_t shared_value ;
+
 static void Hw_init (void) ;
 static void Kernel_init (void) ;
 
@@ -19,6 +21,7 @@ void User_task2 (void) ;
 
 static void Printf_test (void) ;
 static void Timer_test (void) ;
+static void Test_critical_section (uint32_t p, uint32_t taskId) ;
 
 void main (void)
 {
@@ -93,6 +96,8 @@ static void Kernel_init (void)
 
 	Kernel_task_init() ;
 	Kernel_event_flag_init() ;
+	Kernel_msgQ_init() ;
+	Kernel_sem_init(1) ;
 	
 	taskId = Kernel_task_create(User_task0) ;
 	if (NOT_ENOUGH_TASK_NUM == taskId)
@@ -106,15 +111,28 @@ static void Kernel_init (void)
 		putstr("Task1 creation fail\n") ;
 	}
 
-/*
 	taskId = Kernel_task_create(User_task2) ;
 	if (NOT_ENOUGH_TASK_NUM == taskId)
 	{
 		putstr("Task2 creation fail\n") ;
 	}
-*/
 
 	Kernel_start() ;
+}
+
+static void Test_critical_section (uint32_t p, uint32_t taskId)
+{
+	//Kernel_lock_sem() ;
+	Kernel_lock_mutex() ;
+
+	debug_printf("User Task #%u Send=%u\n", taskId, p) ;
+	shared_value = p ;
+	Kernel_yield() ;
+	delay(1000) ;
+	debug_printf("User Task #%u Shared Value=%u\n", taskId, p) ;
+
+	//Kernel_unlock_sem() ;
+	Kernel_unlock_mutex() ;
 }
 
 void User_task0 (void)
@@ -136,7 +154,14 @@ void User_task0 (void)
 				if (uartch == '\r')
 				{
 					cmdBuf[cmdBufIdx] = '\0' ;
+					
+					Kernel_send_msg(KernelMsgQ_Task1, &cmdBufIdx, 1) ;
+					Kernel_send_msg(KernelMsgQ_Task1, cmdBuf, cmdBufIdx) ;
+					Kernel_send_events(KernelEventFlag_CmdIn) ;
 
+					cmdBufIdx = 0 ;
+
+/*
 					while (true)
 					{
 						Kernel_send_events(KernelEventFlag_CmdIn) ;
@@ -157,6 +182,7 @@ void User_task0 (void)
 					}
 
 					cmdBufIdx = 0 ;
+*/
 				}
 				else
 				{
@@ -168,7 +194,8 @@ void User_task0 (void)
 				//Kernel_send_events(KernelEventFlag_CmdIn) ;
 				break ;
 			case KernelEventFlag_CmdOut :
-				debug_printf("\nCmdOut Event by Task0\n") ;
+				Test_critical_section(5, 0) ;
+				//debug_printf("\nCmdOut Event by Task0\n") ;
 				break ;
 		}
 		Kernel_yield() ;
@@ -185,7 +212,7 @@ void User_task1 (void)
 
 	while (true)
 	{
-		KernelEventFlag_t handle_event = Kernel_wait_events(KernelEventFlag_CmdIn) ;
+		KernelEventFlag_t handle_event = Kernel_wait_events(KernelEventFlag_CmdIn|KernelEventFlag_Unlock) ;
 		switch (handle_event)
 		{
 			case KernelEventFlag_CmdIn:
@@ -193,6 +220,10 @@ void User_task1 (void)
 				Kernel_recv_msg(KernelMsgQ_Task1, &cmdlen, 1) ;
 				Kernel_recv_msg(KernelMsgQ_Task1, cmd, cmdlen) ;
 				debug_printf("\nRecv Cmd: %s\n", cmd) ;
+				break ;
+			case KernelEventFlag_Unlock:
+				//Kernel_unlock_sem() ;
+				Kernel_unlock_mutex() ;
 				break ;
 		}
 		Kernel_yield() ;
@@ -205,7 +236,8 @@ void User_task2 (void)
 
 	while (true)
 	{
-		debug_printf("User Task #2 SP=0x%x\n", &local) ;
+		Test_critical_section(3, 2) ;
+		//debug_printf("User Task #2 SP=0x%x\n", &local) ;
 		Kernel_yield() ;
 	}
 }
